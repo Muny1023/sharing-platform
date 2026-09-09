@@ -14,6 +14,7 @@ import org.example.service.CommentService;
 import org.example.service.PostService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.amqp.core.AmqpTemplate;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -21,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.UUID;
 
 @Service
 public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> implements CommentService {
@@ -30,6 +32,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Resource
     AccountService accountService;
+    @Resource
+    AmqpTemplate amqpTemplate;
 
     @Override
     @Transactional
@@ -49,6 +53,22 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         if (!this.save(comment)) return "内部错误，请联系管理员";
         // 冗余计数 +1，与评论同事务
         postService.update().eq("id", vo.getPostId()).setSql("comment_count = comment_count + 1").update();
+        Integer recipientId;
+        String type;
+        Integer commentId = comment.getId();
+        if (vo.getParentId() == null) {
+            recipientId = post.getAuthorId();
+            type = "POST_COMMENT";
+        } else {
+            Comment parent = this.getById(vo.getParentId());
+            recipientId = parent == null ? null : parent.getAuthorId();
+            type = "COMMENT_REPLY";
+        }
+        if (recipientId != null && !recipientId.equals(authorId) && amqpTemplate != null) {
+            amqpTemplate.convertAndSend("notification", new org.example.service.NotificationService.NotificationEvent(
+                    UUID.randomUUID().toString(), authorId, recipientId, type, vo.getPostId(), commentId,
+                    vo.getParentId() == null ? "评论了你的帖子" : "回复了你的评论"));
+        }
         return null;
     }
 

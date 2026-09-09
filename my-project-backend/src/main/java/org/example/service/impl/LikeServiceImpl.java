@@ -13,11 +13,13 @@ import org.example.service.LikeService;
 import org.example.service.PostService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.amqp.core.AmqpTemplate;
 
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.UUID;
 
 @Service
 public class LikeServiceImpl extends ServiceImpl<LikeMapper, Like> implements LikeService {
@@ -27,6 +29,8 @@ public class LikeServiceImpl extends ServiceImpl<LikeMapper, Like> implements Li
 
     @Resource
     CommentService commentService;
+    @Resource
+    AmqpTemplate amqpTemplate;
 
     @Override
     @Transactional
@@ -58,7 +62,15 @@ public class LikeServiceImpl extends ServiceImpl<LikeMapper, Like> implements Li
                 ? new Like(null, userId, vo.getTargetId(), null, new Date())
                 : new Like(null, userId, null, vo.getTargetId(), new Date());
         if (!this.save(like)) return LikeToggleResult.failure("内部错误，请联系管理员");
-        return adjustCount(onPost, vo.getTargetId(), 1)
+        boolean adjusted = adjustCount(onPost, vo.getTargetId(), 1);
+        if (adjusted && onPost && amqpTemplate != null) {
+            Post post = postService.getById(vo.getTargetId());
+            if (post != null && !userId.equals(post.getAuthorId())) {
+                amqpTemplate.convertAndSend("notification", new org.example.service.NotificationService.NotificationEvent(
+                        UUID.randomUUID().toString(), userId, post.getAuthorId(), "POST_LIKE", post.getId(), null, "有人赞了你的帖子"));
+            }
+        }
+        return adjusted
                 ? LikeToggleResult.success(true, 1)
                 : LikeToggleResult.failure("内部错误，请联系管理员");
     }

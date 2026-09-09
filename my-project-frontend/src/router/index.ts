@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/post/:id(\\d+)', name: 'post-detail', component: () => import('@/views/PostDetailView.vue') },
     { path: '/my/posts', name: 'my-posts', component: () => import('@/views/MyPostsView.vue') },
     { path: '/my/favorites', name: 'my-favorites', component: () => import('@/views/MyFavoritesView.vue') },
+    { path: '/notifications', name: 'notifications', component: () => import('@/views/NotificationView.vue') },
     { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFoundView.vue') },
   ],
 })

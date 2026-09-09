@@ -16,6 +16,11 @@ public class RabbitConfiguration {
 
 
     }
+
+    @Bean("notificationQueue")
+    public Queue notificationQueue() {
+        return QueueBuilder.durable("notification").build();
+    }
     @SuppressWarnings("deprecation")
     @Bean
     public MessageConverter jsonMessageConverter() {

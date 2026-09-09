@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { get, post as sendPost, remove } from '@/net'
@@ -72,6 +72,7 @@ function loadComments() {
   get('/api/comment/list/' + postId.value, {},
     (res) => {
       comments.value = res.data?.data ?? []
+      nextTick(() => { const target = Number(route.query.commentId); if (target) document.getElementById(`comment-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
       const ids = collectCommentIds(comments.value)
       if (ids.length === 0) return
       get('/api/like/status', { targetType: 'comment', targetIds: ids.join(',') },
@@ -214,7 +215,7 @@ onMounted(() => {
           <p v-if="comments.length === 0" class="empty-tip small">还没有评论，来抢沙发吧</p>
 
           <div v-for="comment in comments" :key="comment.id" class="comment-thread">
-            <div class="comment-item">
+            <div class="comment-item" :id="`comment-${comment.id}`">
               <div class="comment-head">
                 <span class="comment-author">{{ comment.authorNickname }}</span>
                 <span class="comment-time">{{ comment.createTime }}</span>
@@ -246,7 +247,7 @@ onMounted(() => {
               </div>
             </div>
 
-            <div v-for="reply in comment.replies" :key="reply.id" class="comment-item reply">
+            <div v-for="reply in comment.replies" :key="reply.id" class="comment-item reply" :id="`comment-${reply.id}`">
               <div class="comment-head">
                 <span class="comment-author">{{ reply.authorNickname }}</span>
                 <span class="comment-time">{{ reply.createTime }}</span>

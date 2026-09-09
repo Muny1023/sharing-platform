@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { get, logout } from '@/net'
 
@@ -36,6 +36,9 @@ const loading = ref(false)
 const keyword = ref('')
 const searchMode = ref<'posts'|'comments'>('posts')
 const searching = ref(false)
+const unreadCount = ref(0)
+let unreadTimer: number | undefined
+function loadUnreadCount() { get('/api/notification/unread-count', {}, res => { unreadCount.value = Number(res.data?.data ?? 0) }) }
 
 function loadPosts() {
   loading.value = true
@@ -88,7 +91,10 @@ onMounted(() => {
   get('/api/user/me', {},
     (res) => { me.value = res.data?.data ?? null },
   )
+  loadUnreadCount()
+  unreadTimer = window.setInterval(loadUnreadCount, 15000)
 })
+onUnmounted(() => { if (unreadTimer) window.clearInterval(unreadTimer) })
 </script>
 
 <template>
@@ -98,6 +104,7 @@ onMounted(() => {
         <div class="brand" @click="router.push('/index')">资源分享社区</div>
         <div class="topbar-right">
           <span class="welcome user-menu" @click="router.push('/my/posts')">你好，{{ me?.nickname || me?.username || '...' }}</span>
+          <button class="message-btn" @click="router.push('/notifications')">消息<span v-if="unreadCount > 0" class="badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span></button>
           <button class="link-btn" @click="router.push('/my/favorites')">我的收藏</button>
           <button class="new-post-btn" @click="router.push('/post/new')">发布资源</button>
           <button class="logout-btn" @click="handleLogout">退出登录</button>
@@ -196,6 +203,8 @@ onMounted(() => {
 }
 .user-menu { cursor: pointer; color: #667eea; }
 .link-btn { border: 0; background: none; color: #667eea; cursor: pointer; }
+.message-btn { position: relative; border: 0; background: none; color: #667eea; cursor: pointer; padding: 6px 4px; }
+.badge { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; margin-left:4px; padding:0 4px; border-radius:9px; background:#e74c3c; color:#fff; font-size:11px; }
 .search-bar { display:flex; gap:8px; margin: 0 0 18px; }
 .search-bar select, .search-bar input { padding: 8px 10px; border:1px solid #e4e5ee; border-radius:6px; background:#fff; }
 .search-bar input { flex:1; min-width:0; }
