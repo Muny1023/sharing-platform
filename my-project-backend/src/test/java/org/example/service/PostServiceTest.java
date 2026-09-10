@@ -3,6 +3,7 @@ package org.example.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.example.entity.dto.Account;
 import org.example.entity.dto.Post;
+import com.alibaba.fastjson2.JSON;
 import org.example.entity.vo.request.PostCreateVO;
 import org.example.entity.vo.response.PageVO;
 import org.example.entity.vo.response.PostDetailVO;
@@ -22,9 +23,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.Date;
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectOutputStream;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -173,7 +171,7 @@ class PostServiceTest {
     @Test
     void getPostDetail_cacheHit_skipsDatabase() throws Exception {
         PostDetailVO cached = new PostDetailVO(7, 2, "小红", "标题", "正文", "https://example.com", 5, 3, new Date(), new Date());
-        when(operations.get("post:detail:7")).thenReturn(serialize(cached));
+        when(operations.get("post:detail:7")).thenReturn(JSON.toJSONString(cached));
 
         PostDetailVO result = service.getPostDetail(7);
 
@@ -198,11 +196,4 @@ class PostServiceTest {
         verify(stringRedisTemplate).delete("post:detail:7");
     }
 
-    private String serialize(PostDetailVO detail) throws Exception {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
-            out.writeObject(detail);
-        }
-        return Base64.getEncoder().encodeToString(bytes.toByteArray());
-    }
 }

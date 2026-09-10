@@ -1,5 +1,6 @@
 package org.example.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -28,12 +29,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -116,8 +111,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         if (cached != null) {
             try {
                 log.debug("post detail cache hit, id={}", id);
-                return deserializeDetail(cached);
-            } catch (IOException | ClassNotFoundException e) {
+                return JSON.parseObject(cached, PostDetailVO.class);
+            } catch (RuntimeException e) {
                 log.warn("invalid post detail cache, evicting, id={}", id);
                 cacheDelete(cacheKey);
             }
@@ -133,11 +128,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                 post.getTitle(), post.getContent(), post.getResourceUrl(),
                 post.getLikeCount(), post.getCommentCount(),
                 post.getCreateTime(), post.getUpdateTime(), Boolean.TRUE.equals(post.getDeleted()), post.getFavoriteCount());
-        try {
-            cacheSet(cacheKey, serializeDetail(detail));
-        } catch (IOException e) {
-            log.warn("failed to cache post detail, id={}", id, e);
-        }
+        cacheSet(cacheKey, JSON.toJSONString(detail));
         return detail;
     }
 
@@ -194,21 +185,6 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         if (authorIds.isEmpty()) return Map.of();
         return accountService.listByIds(authorIds).stream()
                 .collect(Collectors.toMap(Account::getId, Account::getNickname, (a, b) -> a));
-    }
-
-    private String serializeDetail(PostDetailVO detail) throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
-            out.writeObject(detail);
-        }
-        return Base64.getEncoder().encodeToString(bytes.toByteArray());
-    }
-
-    private PostDetailVO deserializeDetail(String value) throws IOException, ClassNotFoundException {
-        byte[] bytes = Base64.getDecoder().decode(value);
-        try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
-            return (PostDetailVO) in.readObject();
-        }
     }
 
     private String cacheGet(String key) {
