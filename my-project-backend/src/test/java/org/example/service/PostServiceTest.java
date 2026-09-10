@@ -22,6 +22,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.Date;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -53,6 +56,7 @@ class PostServiceTest {
 
     @Mock
     StringRedisTemplate stringRedisTemplate;
+
 
     @Mock
     ValueOperations<String, String> operations;
@@ -163,6 +167,18 @@ class PostServiceTest {
         assertNotNull(vo);
         assertEquals("小红", vo.authorNickname());
         assertEquals(3, vo.commentCount());
+        verify(operations).set(eq("post:detail:7"), anyString(), eq(10L), eq(TimeUnit.MINUTES));
+    }
+
+    @Test
+    void getPostDetail_cacheHit_skipsDatabase() throws Exception {
+        PostDetailVO cached = new PostDetailVO(7, 2, "小红", "标题", "正文", "https://example.com", 5, 3, new Date(), new Date());
+        when(operations.get("post:detail:7")).thenReturn(serialize(cached));
+
+        PostDetailVO result = service.getPostDetail(7);
+
+        assertEquals(cached, result);
+        verify(service, never()).getById(7);
     }
 
     @Test
@@ -179,5 +195,14 @@ class PostServiceTest {
 
         assertNull(service.deletePost(1, 7));
         verify(service).removeById(7);
+        verify(stringRedisTemplate).delete("post:detail:7");
+    }
+
+    private String serialize(PostDetailVO detail) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
+            out.writeObject(detail);
+        }
+        return Base64.getEncoder().encodeToString(bytes.toByteArray());
     }
 }

@@ -22,10 +22,18 @@ import org.example.service.AccountService;
 import org.example.service.PostService;
 import org.example.utils.Const;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +42,10 @@ import java.util.stream.Collectors;
 
 @Service
 public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements PostService {
+
+    private static final Logger log = LoggerFactory.getLogger(PostServiceImpl.class);
+    private static final String DETAIL_CACHE_PREFIX = "post:detail:";
+    private static final long DETAIL_CACHE_MINUTES = 10;
 
     private static final int POST_CREATE_INTERVAL_SECONDS = 30;
     private static final long DAILY_POST_LIMIT = 50;
@@ -99,23 +111,43 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
     @Override
     public PostDetailVO getPostDetail(Integer id) {
+        String cacheKey = DETAIL_CACHE_PREFIX + id;
+        String cached = cacheGet(cacheKey);
+        if (cached != null) {
+            try {
+                log.debug("post detail cache hit, id={}", id);
+                return deserializeDetail(cached);
+            } catch (IOException | ClassNotFoundException e) {
+                log.warn("invalid post detail cache, evicting, id={}", id);
+                cacheDelete(cacheKey);
+            }
+        }
+        log.debug("post detail cache miss, id={}", id);
         Post post = this.getById(id);
         if (post == null) return null;
         String nickname = accountService.findAccountById(post.getAuthorId())
                 .map(Account::getNickname)
                 .orElse("未知用户");
-        return new PostDetailVO(
+        PostDetailVO detail = new PostDetailVO(
                 post.getId(), post.getAuthorId(), nickname,
                 post.getTitle(), post.getContent(), post.getResourceUrl(),
                 post.getLikeCount(), post.getCommentCount(),
                 post.getCreateTime(), post.getUpdateTime(), Boolean.TRUE.equals(post.getDeleted()), post.getFavoriteCount());
+        try {
+            cacheSet(cacheKey, serializeDetail(detail));
+        } catch (IOException e) {
+            log.warn("failed to cache post detail, id={}", id, e);
+        }
+        return detail;
     }
 
     @Override public String updatePost(Integer authorId, Integer postId, PostUpdateVO vo) {
         Post post = getById(postId);
         if (post == null || Boolean.TRUE.equals(post.getDeleted())) return "帖子不存在或已被删除";
         if (!authorId.equals(post.getAuthorId())) return "只能编辑自己的帖子";
-        return update().eq("id", postId).eq("author_id", authorId).set("title", vo.getTitle()).set("content", vo.getContent()).set("resource_url", vo.getResourceUrl()).update() ? null : "内部错误，请联系管理员";
+        boolean updated = update().eq("id", postId).eq("author_id", authorId).set("title", vo.getTitle()).set("content", vo.getContent()).set("resource_url", vo.getResourceUrl()).update();
+        if (updated) cacheDelete(DETAIL_CACHE_PREFIX + postId);
+        return updated ? null : "内部错误，请联系管理员";
     }
     @Override @Transactional public String deletePost(Integer authorId, Integer postId) {
         Post post = getById(postId);
@@ -125,7 +157,9 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         tombstoneMapper.insert(new PostTombstone(postId, now, new Date(now.getTime() + TimeUnit.DAYS.toMillis(1))));
         favoriteMapper.markPostDeleted(postId);
         // 帖子本体物理删除，评论和点赞由数据库外键级联清理；收藏关系保留为失效收藏。
-        return removeById(postId) ? null : "内部错误，请联系管理员";
+        boolean removed = removeById(postId);
+        if (removed) cacheDelete(DETAIL_CACHE_PREFIX + postId);
+        return removed ? null : "内部错误，请联系管理员";
     }
     @Override public PageVO<PostListItemVO> listMyPosts(Integer authorId, int page, int size, String sort) {
         Page<Post> result = new Page<>(page, size);
@@ -160,5 +194,45 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         if (authorIds.isEmpty()) return Map.of();
         return accountService.listByIds(authorIds).stream()
                 .collect(Collectors.toMap(Account::getId, Account::getNickname, (a, b) -> a));
+    }
+
+    private String serializeDetail(PostDetailVO detail) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
+            out.writeObject(detail);
+        }
+        return Base64.getEncoder().encodeToString(bytes.toByteArray());
+    }
+
+    private PostDetailVO deserializeDetail(String value) throws IOException, ClassNotFoundException {
+        byte[] bytes = Base64.getDecoder().decode(value);
+        try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+            return (PostDetailVO) in.readObject();
+        }
+    }
+
+    private String cacheGet(String key) {
+        try {
+            return stringRedisTemplate.opsForValue().get(key);
+        } catch (RuntimeException e) {
+            log.warn("redis unavailable, bypassing cache, key={}", key);
+            return null;
+        }
+    }
+
+    private void cacheSet(String key, String value) {
+        try {
+            stringRedisTemplate.opsForValue().set(key, value, DETAIL_CACHE_MINUTES, TimeUnit.MINUTES);
+        } catch (RuntimeException e) {
+            log.warn("redis unavailable, skip cache write, key={}", key);
+        }
+    }
+
+    private void cacheDelete(String key) {
+        try {
+            stringRedisTemplate.delete(key);
+        } catch (RuntimeException e) {
+            log.warn("redis unavailable, skip cache eviction, key={}", key);
+        }
     }
 }

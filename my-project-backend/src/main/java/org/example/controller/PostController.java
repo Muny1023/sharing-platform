@@ -51,9 +51,8 @@ public class PostController {
 
     @GetMapping("/{id}")
     public RestBean<PostDetailVO> getPostDetail(@PathVariable Integer id) {
-        var entity = service.getById(id);
-        if (entity != null && Boolean.TRUE.equals(entity.getDeleted())) return RestBean.failure(410, "该帖子已被作者删除");
         PostDetailVO vo = service.getPostDetail(id);
+        if (vo != null && vo.deleted()) return RestBean.failure(410, "该帖子已被作者删除");
         if (vo == null && tombstoneMapper.selectById(id) != null) return RestBean.failure(410, "该帖子已被作者删除");
         return vo == null ? RestBean.failure(404, "帖子不存在或已被删除") : RestBean.success(vo);
     }
