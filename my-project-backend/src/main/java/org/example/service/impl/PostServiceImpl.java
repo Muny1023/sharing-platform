@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -161,7 +162,14 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     }
     @Override public PageVO<PostListItemVO> searchPosts(String keyword, int page, int size) {
         Page<Post> result = new Page<>(page, size);
-        page(result, Wrappers.<Post>query().eq("deleted", false).and(w -> w.like("title", keyword).or().like("content", keyword)).orderByDesc("create_time"));
+        var query = Wrappers.<Post>query().eq("deleted", false);
+        if (keyword != null && !keyword.isBlank()) {
+            String normalized = keyword.trim().replaceAll("([A-Za-z0-9]+)", " $1 ");
+            Arrays.stream(normalized.split("\\s+"))
+                    .filter(token -> !token.isBlank())
+                    .forEach(token -> query.and(w -> w.like("title", token).or().like("content", token)));
+        }
+        page(result, query.orderByDesc("create_time"));
         return toPageVO(result);
     }
     @Override public PageVO<SearchCommentVO> searchComments(String keyword, int page, int size) {

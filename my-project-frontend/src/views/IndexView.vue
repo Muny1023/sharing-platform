@@ -106,6 +106,7 @@ onUnmounted(() => { if (unreadTimer) window.clearInterval(unreadTimer) })
           <span class="welcome user-menu" @click="router.push('/my/posts')">你好，{{ me?.nickname || me?.username || '...' }}</span>
           <button class="message-btn" @click="router.push('/notifications')">消息<span v-if="unreadCount > 0" class="badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span></button>
           <button class="link-btn" @click="router.push('/my/favorites')">我的收藏</button>
+          <button class="link-btn" @click="router.push('/ai')">AI 聊天</button>
           <button class="new-post-btn" @click="router.push('/post/new')">发布资源</button>
           <button class="logout-btn" @click="handleLogout">退出登录</button>
         </div>

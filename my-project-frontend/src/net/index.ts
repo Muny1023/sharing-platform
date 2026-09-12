@@ -165,6 +165,15 @@ function remove(
   service.delete(url, { headers: accessHeader() }).then(res => handleResponse(res, onSuccess, onFailure)).catch(err => onError ? onError(err) : defaultError(err))
 }
 
+function aiChat(
+  data: { conversationId?: string; message: string },
+  onSuccess?: (res: any) => void, onFailure?: (res: any) => void, onError?: (err: any) => void,
+) {
+  service.post('/api/ai/chat', data, { headers: accessHeader(), timeout: 30000 })
+    .then(res => handleResponse(res, onSuccess, onFailure))
+    .catch(err => onError ? onError(err) : defaultError(err))
+}
+
 // ==================== 验证码 ====================
 
 function askCode(
@@ -186,4 +195,4 @@ function logout(
 }
 
 export { login, register, resetConfirm, resetPassword, logout, unauthorized, askCode,
-  storeAccessToken, takeAccessToken, deleteAccessToken, accessHeader, post, get, put, remove }
+  storeAccessToken, takeAccessToken, deleteAccessToken, accessHeader, post, get, put, remove, aiChat }

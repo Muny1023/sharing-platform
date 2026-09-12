@@ -16,6 +16,7 @@ const router = createRouter({
       ],
     },
     { path: '/index', name: 'index', component: () => import('@/views/IndexView.vue') },
+    { path: '/ai', name: 'ai', component: () => import('@/views/AiView.vue') },
     { path: '/post/new', name: 'post-create', component: () => import('@/views/PostCreateView.vue') },
     { path: '/post/:id(\\d+)/edit', name: 'post-edit', component: () => import('@/views/PostEditView.vue') },
     { path: '/post/:id(\\d+)', name: 'post-detail', component: () => import('@/views/PostDetailView.vue') },

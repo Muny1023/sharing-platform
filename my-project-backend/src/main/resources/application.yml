@@ -22,3 +22,7 @@ spring:
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
+
+ai:
+  service-url: ${AI_SERVICE_URL:http://127.0.0.1:8000}
+  service-token: ${AI_SERVICE_TOKEN:change-this-local-token}
