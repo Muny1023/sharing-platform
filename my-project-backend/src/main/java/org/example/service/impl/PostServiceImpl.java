@@ -137,9 +137,11 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         Post post = getById(postId);
         if (post == null || Boolean.TRUE.equals(post.getDeleted())) return "帖子不存在或已被删除";
         if (!authorId.equals(post.getAuthorId())) return "只能编辑自己的帖子";
-        boolean updated = update().eq("id", postId).eq("author_id", authorId).set("title", vo.getTitle()).set("content", vo.getContent()).set("resource_url", vo.getResourceUrl()).update();
+        var updater = update().eq("id", postId).eq("author_id", authorId);
+        if (vo.getExpectedUpdateTime() != null) updater.eq("update_time", new Date(vo.getExpectedUpdateTime()));
+        boolean updated = updater.set("title", vo.getTitle()).set("content", vo.getContent()).set("resource_url", vo.getResourceUrl()).update();
         if (updated) cacheDelete(DETAIL_CACHE_PREFIX + postId);
-        return updated ? null : "内部错误，请联系管理员";
+        return updated ? null : (vo.getExpectedUpdateTime() != null ? "帖子内容已被修改，请重新生成草稿" : "内部错误，请联系管理员");
     }
     @Override @Transactional public String deletePost(Integer authorId, Integer postId) {
         Post post = getById(postId);

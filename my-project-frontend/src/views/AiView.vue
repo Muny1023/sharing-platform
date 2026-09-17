@@ -8,19 +8,24 @@ interface PostCard {
   title: string
   snippet: string
   path: string
+  summary?: string | null
 }
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   posts?: PostCard[]
+  summary?: string | null
 }
 
 const router = useRouter()
 const message = ref('')
 const messages = ref<Message[]>([])
 const loading = ref(false)
-const conversationId = ref(sessionStorage.getItem('ai_conversation_id') || '')
+const storedConversationId = sessionStorage.getItem('ai_conversation_id') || ''
+const conversationId = ref(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(storedConversationId) ? storedConversationId : '')
+if (!conversationId.value && storedConversationId) sessionStorage.removeItem('ai_conversation_id')
+const summarizingPostId = ref<number | null>(null)
 
 function send() {
   const text = message.value.trim()
@@ -36,15 +41,40 @@ function send() {
         conversationId.value = data.conversationId
         sessionStorage.setItem('ai_conversation_id', data.conversationId)
       }
-      messages.value.push({ role: 'assistant', content: data?.reply || '暂时没有得到有效回答', posts: data?.posts || [] })
+      messages.value.push({ role: 'assistant', content: data?.reply || '暂时没有得到有效回答', summary: data?.summary, posts: data?.posts || [] })
       loading.value = false
       nextTick(() => document.querySelector('.messages')?.scrollTo({ top: 999999, behavior: 'smooth' }))
     },
-    () => { loading.value = false },
-    () => {
-      messages.value.push({ role: 'assistant', content: 'AI 服务暂时没有响应，请稍后重试。' })
+    (res) => { loading.value = false; messages.value.push({ role: 'assistant', content: res.data?.message || 'AI 请求失败，请稍后重试。' }) },
+    (error) => {
+      const timeout = error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')
+      const status = error?.response?.status
+      const serverMessage = error?.response?.data?.message
+      messages.value.push({ role: 'assistant', content: timeout ? 'AI 响应时间较长，请稍后查看或重试。' : serverMessage || (status ? `AI 请求失败（HTTP ${status}），请查看后端日志。` : `AI 服务连接失败：${error?.message || '请确认 Java 后端已启动。'}`) })
       loading.value = false
     },
+  )
+}
+
+function summarizePost(postId: number) {
+  if (summarizingPostId.value) return
+  summarizingPostId.value = postId
+  aiChat(
+    { conversationId: conversationId.value || undefined, targetPostId: postId, message: '概括这篇帖子的正文' },
+    (res) => {
+      const data = res.data?.data
+      if (data?.conversationId) {
+        conversationId.value = data.conversationId
+        sessionStorage.setItem('ai_conversation_id', data.conversationId)
+      }
+      const target = [...messages.value].reverse().find(item => item.posts?.some(post => post.postId === postId))
+      const post = target?.posts?.find(item => item.postId === postId)
+      if (post) post.summary = data?.summary || data?.reply || '暂时没有生成概括'
+      messages.value.push({ role: 'assistant', content: data?.reply || '已生成正文概括', summary: data?.summary })
+      summarizingPostId.value = null
+    },
+    (res) => { summarizingPostId.value = null; messages.value.push({ role: 'assistant', content: res.data?.message || '正文概括失败，请稍后重试。' }) },
+    () => { summarizingPostId.value = null; messages.value.push({ role: 'assistant', content: 'AI 服务暂时没有响应，请稍后重试。' }) },
   )
 }
 
@@ -72,12 +102,17 @@ function clearConversation() {
         <div v-for="(item, index) in messages" :key="index" class="message-row" :class="item.role">
           <div class="bubble">{{ item.content }}</div>
           <div v-if="item.posts?.length" class="post-cards">
-            <button v-for="post in item.posts" :key="post.postId" class="post-card" @click="router.push(post.path)">
+            <div v-for="post in item.posts" :key="post.postId" class="post-card" @click="router.push(post.path)">
               <strong>{{ post.title }}</strong>
               <span>{{ post.snippet }}</span>
               <small>查看帖子 →</small>
-            </button>
+              <span v-if="post.summary" class="post-summary"><strong>正文概括：</strong>{{ post.summary }}</span>
+              <button type="button" class="summary-btn" :disabled="summarizingPostId !== null" @click.stop="summarizePost(post.postId)">
+                {{ summarizingPostId === post.postId ? '概括中...' : '概括正文' }}
+              </button>
+            </div>
           </div>
+          <div v-if="item.summary" class="summary-bubble"><strong>正文概括：</strong>{{ item.summary }}</div>
         </div>
         <div v-if="loading" class="loading">正在搜索...</div>
       </div>
@@ -108,6 +143,10 @@ function clearConversation() {
 .post-card strong { color:#333; }
 .post-card span { color:#666; line-height:1.5; }
 .post-card small { color:#667eea; }
+.post-summary { color:#34405a; line-height:1.6; padding-top:4px; }
+.summary-btn { align-self:flex-start; border:1px solid #cfd7f4; background:#fff; color:#667eea; border-radius:6px; padding:5px 9px; cursor:pointer; }
+.summary-btn:disabled { opacity:.55; cursor:wait; }
+.summary-bubble { margin-top:8px; padding:10px 12px; color:#34405a; background:#eef3ff; border-left:3px solid #667eea; border-radius:6px; line-height:1.6; }
 .composer { display:flex; gap:10px; padding-top:14px; border-top:1px solid #e3e4ea; }
 .composer input { flex:1; min-width:0; border:1px solid #dfe1ea; border-radius:8px; padding:12px; font-size:15px; }
 .composer button { width:76px; border:0; border-radius:8px; background:#667eea; color:#fff; cursor:pointer; }

@@ -5,5 +5,6 @@ import java.util.List;
 public record AiChatVO(
         String conversationId,
         String reply,
+        String summary,
         List<AiPostCardVO> posts) {
 }

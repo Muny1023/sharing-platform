@@ -3,6 +3,7 @@ package org.example.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.example.entity.dto.Notification;
 import org.example.entity.vo.response.NotificationPageVO;
+import java.util.List;
 
 public interface NotificationService extends IService<Notification> {
     long unreadCount(Integer recipientId);
@@ -13,6 +14,7 @@ public interface NotificationService extends IService<Notification> {
     long deleteRead(Integer recipientId);
     void consume(NotificationEvent event);
     long cleanupExpired();
+    List<Integer> listUnreadCommentIds(Integer recipientId, Integer postId);
 
     record NotificationEvent(String eventId, Integer actorId, Integer recipientId, String type,
                              Integer postId, Integer commentId, String content) {}

@@ -24,6 +24,7 @@ import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.List;
 
 @Service
 public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Notification> implements NotificationService {
@@ -105,6 +106,13 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
     public long cleanupExpired() {
         Date cutoff = new Date(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(90));
         return baseMapper.delete(Wrappers.<Notification>query().lt("created_at", cutoff));
+    }
+
+    @Override
+    public List<Integer> listUnreadCommentIds(Integer recipientId, Integer postId) {
+        return list(Wrappers.<Notification>query().eq("recipient_id", recipientId).eq("post_id", postId)
+                .eq("is_read", false).in("type", List.of("POST_COMMENT", "COMMENT_REPLY")))
+                .stream().map(Notification::getCommentId).filter(java.util.Objects::nonNull).distinct().toList();
     }
 
     private void decrement(Integer id, long delta) {

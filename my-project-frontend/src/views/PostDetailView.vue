@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { get, post as sendPost, remove } from '@/net'
+import { aiChat, get, post as sendPost, remove } from '@/net'
 
 interface PostDetail {
   id: number
@@ -46,6 +46,12 @@ const notFound = ref(false)
 const tombstone = ref(false)
 const meId = ref<number | null>(null)
 const favorited = ref(false)
+const postSummary = ref('')
+const summarizing = ref(false)
+const feedback = ref('')
+const draft = ref('')
+const feedbackLoading = ref(false)
+const draftLoading = ref(false)
 
 /** 展开楼层里所有评论 id（含回复），用于批量查点赞状态 */
 function collectCommentIds(nodes: CommentNode[]): number[] {
@@ -61,6 +67,31 @@ function loadPost() {
 function loadFavorite() { get('/api/favorite/status', { postId: postId.value }, r => { favorited.value = !!r.data?.data }) }
 function toggleFavorite() { sendPost('/api/favorite/toggle', { postId: postId.value }, r => { const next = !!r.data?.data?.favorited; if (post.value && next !== favorited.value) post.value.favoriteCount = Math.max(0, (post.value.favoriteCount ?? 0) + (next ? 1 : -1)); favorited.value = next }) }
 function deletePost() { if (!confirm('确定删除这篇帖子吗？')) return; remove(`/api/post/${postId.value}`, () => router.push('/index')) }
+function summarizePost() {
+  if (summarizing.value) return
+  summarizing.value = true
+  aiChat({ message: '概括这篇帖子的正文', targetPostId: postId.value },
+    (res) => { const data = res.data?.data; postSummary.value = data?.summary || data?.reply || '暂时没有生成概括'; summarizing.value = false },
+    (res) => { summarizing.value = false; ElMessage.error(res.data?.message || '正文概括失败') },
+    () => { summarizing.value = false; ElMessage.error('AI 服务暂时没有响应') },
+  )
+}
+function analyzeFeedback() {
+  if (feedbackLoading.value || !meId.value || meId.value !== post.value?.authorId) return
+  feedbackLoading.value = true
+  aiChat({ message: '分析这篇帖子评论的反馈', feedbackPostId: postId.value }, r => { feedback.value = r.data?.data?.reply || '暂无可分析反馈'; feedbackLoading.value = false }, r => { feedbackLoading.value = false; ElMessage.error(r.data?.message || '评论反馈分析失败') }, () => { feedbackLoading.value = false; ElMessage.error('AI 服务暂时没有响应') })
+}
+function generateDraft() {
+  if (draftLoading.value || !feedback.value || !meId.value || meId.value !== post.value?.authorId) return
+  draftLoading.value = true
+  aiChat({ message: '根据评论反馈修改正文，生成草稿', draftPostId: postId.value }, r => { draft.value = r.data?.data?.reply || '暂时无法生成草稿'; draftLoading.value = false }, r => { draftLoading.value = false; ElMessage.error(r.data?.message || '修改草稿生成失败') }, () => { draftLoading.value = false; ElMessage.error('AI 服务暂时没有响应') })
+}
+function useDraft() {
+  if (!draft.value || !post.value) return
+  sessionStorage.setItem(`ai-draft:${post.value.id}`, draft.value)
+  sessionStorage.setItem(`ai-draft-version:${post.value.id}`, String(new Date(post.value.updateTime).getTime()))
+  router.push(`/post/${post.value.id}/edit`)
+}
 
 function loadPostLikeStatus() {
   get('/api/like/status', { targetType: 'post', targetIds: String(postId.value) },
@@ -180,6 +211,7 @@ onMounted(() => {
             <span class="meta-time">发布于 {{ post.createTime }}</span>
           </div>
           <div class="post-content">{{ post.content }}</div>
+          <div v-if="postSummary" class="post-summary"><strong>正文概括：</strong>{{ postSummary }}</div>
           <a :href="post.resourceUrl" target="_blank" rel="noopener noreferrer" class="resource-link">
             🔗 获取资源：{{ post.resourceUrl }}
           </a>
@@ -189,9 +221,11 @@ onMounted(() => {
             </button>
             <span class="comment-total">共 {{ post.commentCount }} 条评论</span>
             <button class="favorite-btn" :class="{liked:favorited}" @click="toggleFavorite">{{ favorited ? '已收藏' : '收藏' }} · {{ post.favoriteCount ?? 0 }}</button>
-            <template v-if="meId === post.authorId"><button class="edit-btn" @click="router.push(`/post/${post.id}/edit`)">编辑</button><button class="delete-btn" @click="deletePost">删除</button></template>
+            <button class="summary-btn" :disabled="summarizing" @click="summarizePost">{{ summarizing ? '概括中...' : '概括正文' }}</button>
+            <template v-if="meId === post.authorId"><button class="summary-btn" :disabled="feedbackLoading" @click="analyzeFeedback">{{ feedbackLoading ? '分析中...' : '分析评论反馈' }}</button><button v-if="feedback" class="summary-btn" :disabled="draftLoading" @click="generateDraft">{{ draftLoading ? '生成中...' : '生成修改草稿' }}</button><button class="edit-btn" @click="router.push(`/post/${post.id}/edit`)">编辑</button><button class="delete-btn" @click="deletePost">删除</button></template>
           </div>
         </article>
+        <section v-if="feedback || draft" class="comment-panel ai-feedback"><h2 class="panel-title">AI 评论反馈</h2><p v-if="feedback" class="post-summary"><strong>反馈概括：</strong>{{ feedback }}</p><p v-if="draft" class="post-summary"><strong>修改草稿：</strong>{{ draft }}</p><button v-if="draft" class="summary-btn" @click="useDraft">带入编辑器确认修改</button><p v-if="draft" class="draft-note">草稿不会自动保存，请在编辑器确认后点击保存。</p></section>
 
         <section class="comment-panel">
           <h2 class="panel-title">评论区</h2>
@@ -351,6 +385,16 @@ onMounted(() => {
   color: #333;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.post-summary {
+  margin-top: 18px;
+  padding: 12px 14px;
+  color: #34405a;
+  background: #eef3ff;
+  border-left: 3px solid #667eea;
+  border-radius: 6px;
+  line-height: 1.7;
 }
 
 .resource-link {

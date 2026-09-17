@@ -19,4 +19,7 @@ public class PostCreateVO {
     @Pattern(regexp = "^https?://\\S+$", message = "资源链接必须以 http(s):// 开头")
     @Length(max = 2048, message = "资源链接不能超过2048个字符")
     String resourceUrl;
+
+    /** AI 草稿保存时用于并发保护；普通编辑可不传。 */
+    Long expectedUpdateTime;
 }

@@ -166,10 +166,11 @@ function remove(
 }
 
 function aiChat(
-  data: { conversationId?: string; message: string },
+  data: { conversationId?: string; message: string; targetPostId?: number; feedbackPostId?: number; draftPostId?: number; unreadOnly?: boolean },
   onSuccess?: (res: any) => void, onFailure?: (res: any) => void, onError?: (err: any) => void,
 ) {
-  service.post('/api/ai/chat', data, { headers: accessHeader(), timeout: 30000 })
+  // Agent 可能包含模型判断、Java 工具调用和二次总结，前端等待时间要长于后端 45 秒超时。
+  service.post('/api/ai/chat', data, { headers: accessHeader(), timeout: 60000 })
     .then(res => handleResponse(res, onSuccess, onFailure))
     .catch(err => onError ? onError(err) : defaultError(err))
 }

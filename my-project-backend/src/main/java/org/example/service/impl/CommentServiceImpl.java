@@ -100,4 +100,9 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         topMap.forEach((topId, topVO) -> topVO.replies().addAll(replyMap.getOrDefault(topId, List.of())));
         return new ArrayList<>(topMap.values());
     }
+
+    @Override
+    public List<Comment> listActiveCommentsByPost(Integer postId) {
+        return this.query().eq("post_id", postId).orderByAsc("create_time").list();
+    }
 }
